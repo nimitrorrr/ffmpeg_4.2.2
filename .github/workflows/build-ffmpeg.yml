@@ -1,0 +1,151 @@
+name: Build FFmpeg 4.2.2
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ffmpeg:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        arch: [armeabi-v7a, arm64-v8a, x86, x86_64]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '11'
+    
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r21e
+        add-to-path: true
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential yasm pkg-config git
+    
+    - name: Download FFmpeg 4.2.2
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-4.2.2.tar.bz2
+        tar -xjf ffmpeg-4.2.2.tar.bz2
+        mv ffmpeg-4.2.2 ffmpeg
+    
+    - name: Configure FFmpeg for ${{ matrix.arch }}
+      run: |
+        cd ffmpeg
+        
+        # Определяем параметры для разных архитектур
+        case ${{ matrix.arch }} in
+          armeabi-v7a)
+            ARCH=arm
+            CPU=armv7-a
+            CROSS_PREFIX=armv7a-linux-androideabi
+            ;;
+          arm64-v8a)
+            ARCH=aarch64
+            CPU=armv8-a
+            CROSS_PREFIX=aarch64-linux-android
+            ;;
+          x86)
+            ARCH=x86
+            CPU=i686
+            CROSS_PREFIX=i686-linux-android
+            ;;
+          x86_64)
+            ARCH=x86_64
+            CPU=x86-64
+            CROSS_PREFIX=x86_64-linux-android
+            ;;
+        esac
+        
+        export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+        export SYSROOT=$TOOLCHAIN/sysroot
+        export PATH=$TOOLCHAIN/bin:$PATH
+        export CC=${CROSS_PREFIX}21-clang
+        export CXX=${CROSS_PREFIX}21-clang++
+        export AR=llvm-ar
+        export AS=llvm-as
+        export RANLIB=llvm-ranlib
+        export STRIP=llvm-strip
+        
+        ./configure \
+          --prefix=./android-build/${{ matrix.arch }} \
+          --enable-shared \
+          --disable-static \
+          --disable-doc \
+          --disable-programs \
+          --disable-symver \
+          --enable-cross-compile \
+          --target-os=android \
+          --arch=$ARCH \
+          --cpu=$CPU \
+          --cross-prefix=$CROSS_PREFIX- \
+          --sysroot=$SYSROOT \
+          --cc=$CC \
+          --cxx=$CXX \
+          --enable-pic \
+          --enable-avfilter \
+          --enable-avcodec \
+          --enable-avformat \
+          --enable-avutil \
+          --disable-avdevice \
+          --disable-postproc \
+          --disable-swresample \
+          --disable-swscale \
+          --enable-protocol=file \
+          --enable-small
+    
+    - name: Build FFmpeg
+      run: |
+        cd ffmpeg
+        make -j$(nproc)
+        make install
+    
+    - name: Package libraries
+      run: |
+        cd ffmpeg/android-build/${{ matrix.arch }}
+        mkdir -p libs
+        cp lib/libavfilter.so libs/
+        cp lib/libavcodec.so libs/
+        cp lib/libavformat.so libs/
+        cp lib/libavutil.so libs/
+        
+        # Создаем архив
+        tar -czf ffmpeg-4.2.2-${{ matrix.arch }}.tar.gz libs/ include/
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ffmpeg-${{ matrix.arch }}
+        path: ffmpeg/android-build/${{ matrix.arch }}/ffmpeg-4.2.2-${{ matrix.arch }}.tar.gz
+    
+  create-release:
+    needs: build-ffmpeg
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ffmpeg-4.2.2-${{ github.run_number }}
+        name: FFmpeg 4.2.2 Build ${{ github.run_number }}
+        files: |
+          ffmpeg-*/*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
