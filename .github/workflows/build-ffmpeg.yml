@@ -82,10 +82,10 @@ jobs:
           --enable-avcodec \
           --enable-avformat \
           --enable-avutil \
+          --enable-swresample \
+          --enable-swscale \
           --disable-avdevice \
           --disable-postproc \
-          --disable-swresample \
-          --disable-swscale \
           --enable-protocol=file \
           --enable-small
     
@@ -104,11 +104,13 @@ jobs:
         mkdir -p package/libs/armeabi-v7a
         mkdir -p package/include
         
-        # Копируем .so файлы
+        # Копируем .so файлы (все 6 библиотек)
         cp lib/libavfilter.so package/libs/armeabi-v7a/
         cp lib/libavcodec.so package/libs/armeabi-v7a/
         cp lib/libavformat.so package/libs/armeabi-v7a/
         cp lib/libavutil.so package/libs/armeabi-v7a/
+        cp lib/libswresample.so package/libs/armeabi-v7a/
+        cp lib/libswscale.so package/libs/armeabi-v7a/
         
         # Копируем заголовочные файлы
         cp -r include/* package/include/
