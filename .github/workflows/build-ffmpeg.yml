@@ -11,16 +11,12 @@ jobs:
   build-ffmpeg:
     runs-on: ubuntu-latest
     
-    strategy:
-      matrix:
-        arch: [armeabi-v7a, arm64-v8a, x86, x86_64]
-    
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Setup Java
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '11'
@@ -42,33 +38,13 @@ jobs:
         tar -xjf ffmpeg-4.2.2.tar.bz2
         mv ffmpeg-4.2.2 ffmpeg
     
-    - name: Configure FFmpeg for ${{ matrix.arch }}
+    - name: Configure FFmpeg for armeabi-v7a
       run: |
         cd ffmpeg
         
-        # Определяем параметры для разных архитектур
-        case ${{ matrix.arch }} in
-          armeabi-v7a)
-            ARCH=arm
-            CPU=armv7-a
-            CROSS_PREFIX=armv7a-linux-androideabi
-            ;;
-          arm64-v8a)
-            ARCH=aarch64
-            CPU=armv8-a
-            CROSS_PREFIX=aarch64-linux-android
-            ;;
-          x86)
-            ARCH=x86
-            CPU=i686
-            CROSS_PREFIX=i686-linux-android
-            ;;
-          x86_64)
-            ARCH=x86_64
-            CPU=x86-64
-            CROSS_PREFIX=x86_64-linux-android
-            ;;
-        esac
+        ARCH=arm
+        CPU=armv7-a
+        CROSS_PREFIX=armv7a-linux-androideabi
         
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export SYSROOT=$TOOLCHAIN/sysroot
@@ -81,7 +57,7 @@ jobs:
         export STRIP=llvm-strip
         
         ./configure \
-          --prefix=./android-build/${{ matrix.arch }} \
+          --prefix=./android-build/armeabi-v7a \
           --enable-shared \
           --disable-static \
           --disable-doc \
@@ -113,39 +89,39 @@ jobs:
         make -j$(nproc)
         make install
     
-    - name: Package libraries
+    - name: Package libraries and headers
       run: |
-        cd ffmpeg/android-build/${{ matrix.arch }}
-        mkdir -p libs
-        cp lib/libavfilter.so libs/
-        cp lib/libavcodec.so libs/
-        cp lib/libavformat.so libs/
-        cp lib/libavutil.so libs/
+        cd ffmpeg/android-build/armeabi-v7a
+        
+        # Создаем структуру как в оригинальном проекте
+        mkdir -p package/libs/armeabi-v7a
+        mkdir -p package/include
+        
+        # Копируем .so файлы
+        cp lib/libavfilter.so package/libs/armeabi-v7a/
+        cp lib/libavcodec.so package/libs/armeabi-v7a/
+        cp lib/libavformat.so package/libs/armeabi-v7a/
+        cp lib/libavutil.so package/libs/armeabi-v7a/
+        
+        # Копируем заголовочные файлы
+        cp -r include/* package/include/
         
         # Создаем архив
-        tar -czf ffmpeg-4.2.2-${{ matrix.arch }}.tar.gz libs/ include/
+        cd package
+        tar -czf ../ffmpeg-4.2.2-armeabi-v7a.tar.gz libs/ include/
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: ffmpeg-${{ matrix.arch }}
-        path: ffmpeg/android-build/${{ matrix.arch }}/ffmpeg-4.2.2-${{ matrix.arch }}.tar.gz
-    
-  create-release:
-    needs: build-ffmpeg
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v3
+        name: ffmpeg-armeabi-v7a
+        path: ffmpeg/android-build/armeabi-v7a/ffmpeg-4.2.2-armeabi-v7a.tar.gz
     
     - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ffmpeg-4.2.2-${{ github.run_number }}
         name: FFmpeg 4.2.2 Build ${{ github.run_number }}
-        files: |
-          ffmpeg-*/*.tar.gz
+        files: ffmpeg/android-build/armeabi-v7a/ffmpeg-4.2.2-armeabi-v7a.tar.gz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
