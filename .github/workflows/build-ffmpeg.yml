@@ -21,11 +21,13 @@ jobs:
         distribution: 'zulu'
         java-version: '11'
     
-    - name: Setup Android NDK
-      uses: nttld/setup-ndk@v1
-      with:
-        ndk-version: r21e
-        add-to-path: true
+    - name: Setup Android NDK r21e
+      run: |
+        wget https://dl.google.com/android/repository/android-ndk-r21e-linux-x86_64.zip
+        unzip -q android-ndk-r21e-linux-x86_64.zip
+        export ANDROID_NDK_HOME=$(pwd)/android-ndk-r21e
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
     
     - name: Install dependencies
       run: |
@@ -46,11 +48,11 @@ jobs:
         CPU=armv7-a
         API=21
         
+        export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
         export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
         export SYSROOT=$TOOLCHAIN/sysroot
-        export PATH=$TOOLCHAIN/bin:$PATH
         
-        # Правильные имена компиляторов для NDK r21
+        # Правильные имена компиляторов для NDK r21e
         export CC=$TOOLCHAIN/bin/armv7a-linux-androideabi${API}-clang
         export CXX=$TOOLCHAIN/bin/armv7a-linux-androideabi${API}-clang++
         export AR=$TOOLCHAIN/bin/arm-linux-androideabi-ar
@@ -90,6 +92,7 @@ jobs:
     - name: Build FFmpeg
       run: |
         cd ffmpeg
+        export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
         make -j$(nproc)
         make install
     
